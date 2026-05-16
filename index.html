@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tenant Feedback Intelligence System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="nav">
+    <span class="nav-title">Tenant Feedback Intelligence System</span>
+    <div>
+        <a href="/">Analyse</a>
+        <a href="/dashboard">Dashboard</a>
+    </div>
+</div>
+<div class="main">
+    <h2>Analyse Feedback</h2>
+    <p class="subtitle">Powered by Azure AI</p>
+    <textarea id="input" placeholder="Paste tenant feedback here..."></textarea>
+    <div class="btn-row">
+        <button onclick="analyseSingle()">Analyse Feedback</button>
+    </div>
+    <div class="loading" id="loading">Analysing with Azure AI...</div>
+    <div class="alert-banner" id="alert-banner">HIGH PRIORITY alert — this complaint requires immediate attention.</div>
+    <div class="result" id="result">
+        <div class="priority-badge" id="badge"></div>
+        <div class="row">
+            <span class="label">Sentiment</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div class="conf-bar-wrap"><div class="conf-bar" id="conf-bar"></div></div>
+                <span class="value" id="sentiment"></span>
+            </div>
+        </div>
+        <div class="row"><span class="label">Confidence</span><span class="value" id="confidence"></span></div>
+        <div class="row"><span class="label">Language</span><span class="value" id="language"></span></div>
+        <div class="row"><span class="label">Category</span><span class="value" id="category"></span></div>
+        <div class="row">
+            <span class="label">Keywords</span>
+            <div class="tags" id="keywords"></div>
+        </div>
+        <div class="row">
+            <span class="label">Entities</span>
+            <div class="tags" id="entities"></div>
+        </div>
+    </div>
+    <div class="upload-area" style="margin-top:24px;">
+        <input type="file" id="csv-file" accept=".csv" onchange="uploadCSV()">
+        <label class="upload-label" for="csv-file">Click to upload a CSV file for bulk analysis</label>
+        <p style="font-size:12px;color:#aaa;margin-top:6px;">CSV must have a column called feedback</p>
+    </div>
+    <div id="upload-results"></div>
+    <div class="history">
+        <h3>Recent Analyses</h3>
+        <div class="filter-row">
+            <select id="filter-category" onchange="loadHistory()">
+                <option value="ALL">All categories</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="RENT & PAYMENTS">Rent and Payments</option>
+                <option value="COMMUNITY">Community</option>
+                <option value="GENERAL">General</option>
+            </select>
+            <select id="filter-priority" onchange="loadHistory()">
+                <option value="ALL">All priorities</option>
+                <option value="HIGH PRIORITY">High Priority</option>
+                <option value="MEDIUM PRIORITY">Medium Priority</option>
+                <option value="LOW PRIORITY">Low Priority</option>
+            </select>
+            <input type="text" id="filter-search" placeholder="Search feedback..." oninput="loadHistory()">
+        </div>
+        <div id="history-list"></div>
+    </div>
+</div>
+<script>
+function getPriorityColor(p) {
+    if (p === "HIGH PRIORITY") return "#ff4444";
+    if (p === "MEDIUM PRIORITY") return "#ffaa00";
+    return "#00aa44";
+}
+
+async function analyseSingle() {
+    var text = document.getElementById("input").value.trim();
+    if (!text) return;
+    document.getElementById("result").style.display = "none";
+    document.getElementById("alert-banner").style.display = "none";
+    document.getElementById("loading").style.display = "block";
+    var res = await fetch("/analyse", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({text: text})
+    });
+    var data = await res.json();
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("result").style.display = "block";
+    if (data.priority === "HIGH PRIORITY") {
+        document.getElementById("alert-banner").style.display = "block";
+    }
+    document.getElementById("badge").textContent = data.priority;
+    document.getElementById("badge").style.background = data.color;
+    document.getElementById("sentiment").textContent = data.sentiment;
+    document.getElementById("confidence").textContent = data.confidence + "%";
+    document.getElementById("conf-bar").style.width = data.confidence + "%";
+    document.getElementById("language").textContent = data.language + " (" + data.lang_confidence + "% confidence)";
+    document.getElementById("category").textContent = data.category;
+    var kw = data.keywords.length ? data.keywords.map(function(k) { return '<span class="tag">' + k + '</span>'; }).join("") : '<span class="empty">none found</span>';
+    document.getElementById("keywords").innerHTML = kw;
+    var ent = data.entities.length ? data.entities.map(function(e) { return '<span class="entity-tag">' + e.text + ' (' + e.type + ')</span>'; }).join("") : '<span class="empty">none found</span>';
+    document.getElementById("entities").innerHTML = ent;
+    loadHistory();
+}
+
+async function uploadCSV() {
+    var file = document.getElementById("csv-file").files[0];
+    if (!file) return;
+    var text = await file.text();
+    var lines = text.trim().split("\n");
+    var headers = lines[0].split(",").map(function(h) { return h.trim().toLowerCase(); });
+    var feedbackIdx = headers.indexOf("feedback");
+    if (feedbackIdx === -1) { alert("CSV must have a feedback column"); return; }
+    var feedbacks = [];
+    for (var i = 1; i < lines.length; i++) {
+        var val = lines[i].split(",")[feedbackIdx];
+        if (val) feedbacks.push(val.replace(/"/g, "").trim());
+    }
+    var resultsDiv = document.getElementById("upload-results");
+    resultsDiv.innerHTML = '<p style="font-size:13px;color:#888;margin:10px 0;">Analysing ' + feedbacks.length + ' entries...</p>';
+    var results = [];
+    for (var j = 0; j < feedbacks.length; j++) {
+        var res = await fetch("/analyse", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({text: feedbacks[j]})
+        });
+        var d = await res.json();
+        results.push({
+            feedback: feedbacks[j],
+            priority: d.priority,
+            category: d.category,
+            sentiment: d.sentiment,
+            color: d.color,
+            confidence: d.confidence,
+            language: d.language
+        });
+    }
+    var html = '<div class="success-banner">Bulk analysis complete — ' + results.length + ' entries processed successfully</div>';
+    for (var k = 0; k < results.length; k++) {
+        var r = results[k];
+        html += '<div class="upload-item">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+        html += '<span style="font-weight:600;font-size:12px;padding:2px 8px;border-radius:99px;color:white;background:' + r.color + '">' + r.priority + '</span>';
+        html += '<span style="color:#888;font-size:12px;">' + r.category + '</span>';
+        html += '</div>';
+        html += '<div style="color:#444;margin-bottom:6px;">' + r.feedback.substring(0, 100) + '...</div>';
+        html += '<div style="display:flex;gap:16px;font-size:12px;color:#888;">';
+        html += '<span>Sentiment: <strong style="color:#1a1a2e;">' + r.sentiment + '</strong></span>';
+        html += '<span>Confidence: <strong style="color:#1a1a2e;">' + r.confidence + '%</strong></span>';
+        html += '<span>Language: <strong style="color:#1a1a2e;">' + r.language + '</strong></span>';
+        html += '</div></div>';
+    }
+    resultsDiv.innerHTML = html;
+    loadHistory();
+}
+
+async function deleteAnalysis(id) {
+    if (!confirm("Delete this analysis?")) return;
+    await fetch("/delete/" + id, {method: "DELETE"});
+    loadHistory();
+}
+
+async function loadHistory() {
+    var category = document.getElementById("filter-category").value;
+    var priority = document.getElementById("filter-priority").value;
+    var search = document.getElementById("filter-search").value;
+    var url = "/history?category=" + encodeURIComponent(category) + "&priority=" + encodeURIComponent(priority) + "&search=" + encodeURIComponent(search);
+    var res = await fetch(url);
+    var data = await res.json();
+    var list = document.getElementById("history-list");
+    if (data.length === 0) {
+        list.innerHTML = '<p style="font-size:13px;color:#aaa;">No analyses found.</p>';
+        return;
+    }
+    var html = "";
+    for (var i = 0; i < data.length; i++) {
+        var h = data[i];
+        var col = getPriorityColor(h.priority);
+        html += '<div class="history-item">';
+        html += '<div class="history-row">';
+        html += '<span class="hist-badge" style="background:' + col + '">' + h.priority + '</span>';
+        html += '<span class="hist-time">' + h.timestamp + ' | ' + h.language + '</span>';
+        html += '<button class="delete-btn" onclick="deleteAnalysis(' + h.id + ')" title="Delete">x</button>';
+        html += '</div>';
+        html += '<div class="history-text">' + h.feedback.substring(0, 100) + '...</div>';
+        html += '<div style="margin-top:6px;font-size:12px;color:#888;">' + h.category + ' | ' + h.sentiment + ' (' + h.confidence + '%)</div>';
+        html += '</div>';
+    }
+    list.innerHTML = html;
+}
+
+loadHistory();
+</script>
+</body>
+</html>

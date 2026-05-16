@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard | Tenant Feedback Intelligence System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="nav">
+    <span class="nav-title">Tenant Feedback Intelligence System</span>
+    <div>
+        <a href="/">Analyse</a>
+        <a href="/dashboard">Dashboard</a>
+    </div>
+</div>
+<div class="main-wide">
+    <div class="top-row">
+        <h2 style="margin-bottom:0;">Dashboard</h2>
+        {% if stats.total > 0 %}
+        <div class="export-row">
+            <select id="export-category">
+                <option value="ALL">All categories</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="RENT & PAYMENTS">Rent and Payments</option>
+                <option value="COMMUNITY">Community</option>
+                <option value="GENERAL">General</option>
+            </select>
+            <select id="export-priority">
+                <option value="ALL">All priorities</option>
+                <option value="HIGH PRIORITY">High Priority</option>
+                <option value="MEDIUM PRIORITY">Medium Priority</option>
+                <option value="LOW PRIORITY">Low Priority</option>
+            </select>
+            <button class="export-btn" onclick="exportCSV()">Export to CSV</button>
+        </div>
+        {% endif %}
+    </div>
+    {% if stats.total == 0 %}
+    <p class="no-data">No analyses yet. Go to the Analyse page and submit some feedback first.</p>
+    {% else %}
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total }}</div>
+            <div class="stat-label">Total Analyses</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color:#ff4444">{{ stats.high }}</div>
+            <div class="stat-label">High Priority</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color:#ffaa00">{{ stats.medium }}</div>
+            <div class="stat-label">Medium Priority</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" style="color:#00aa44">{{ stats.low }}</div>
+            <div class="stat-label">Low Priority</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.avg_confidence }}%</div>
+            <div class="stat-label">Avg Confidence</div>
+        </div>
+    </div>
+    <div class="section">
+        <h3>Complaints by Category</h3>
+        {% for cat, count in stats.categories %}
+        <div class="bar-row">
+            <span class="bar-label">{{ cat }}</span>
+            <div class="bar-track">
+                <div class="bar-fill" style="width:{{ (count / stats.total * 100)|round }}%"></div>
+            </div>
+            <span class="bar-count">{{ count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="section">
+        <h3>Sentiment Breakdown</h3>
+        {% for sent, count in stats.sentiments %}
+        <div class="bar-row">
+            <span class="bar-label">{{ sent }}</span>
+            <div class="bar-track">
+                <div class="bar-fill" style="width:{{ (count / stats.total * 100)|round }}%"></div>
+            </div>
+            <span class="bar-count">{{ count }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+<script>
+function exportCSV() {
+    var category = document.getElementById("export-category").value;
+    var priority = document.getElementById("export-priority").value;
+    window.location.href = "/export?category=" + encodeURIComponent(category) + "&priority=" + encodeURIComponent(priority);
+}
+</script>
+</body>
+</html>
